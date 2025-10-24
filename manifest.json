@@ -1,0 +1,25 @@
+{
+    "manifest_version": 3,
+    "version": "0.1.0",
+    "name": "LGH",
+    "description": "Linkedin Game Helper",
+    "content_scripts": [
+        {
+            "all_frames": false,
+            "matches": [
+                "https://www.linkedin.com/voyager/api/graphql",
+                "https://www.linkedin.com/games/*"
+            ],
+            "run_at": "document_start",
+            "world": "MAIN",
+            "js": [
+                "gameHelper.js"
+            ]
+        }
+    ],
+    "permissions": [],
+    "host_permissions": [
+        "https://www.linkedin.com/games/*",
+        "https://www.linkedin.com/voyager/api/graphql"
+    ]
+}
