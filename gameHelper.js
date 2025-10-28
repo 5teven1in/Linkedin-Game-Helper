@@ -55,9 +55,11 @@ const sleep = async (ms) => {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const delayBetweenEvents = 150;
+
 const mouseDownUp = async (node) => {
     if (node) node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    await sleep(100 + Math.random() * 50);
+    await sleep(delayBetweenEvents);
     if (node) node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 }
 
@@ -67,7 +69,7 @@ const solverBlueprintGamePuzzle = async (answer) => {
     inp.value = answer;
     inp.dispatchEvent(new Event("input", { bubbles: true }));
     inp.dispatchEvent(new Event("change", { bubbles: true }));
-    await sleep(300);
+    await sleep(delayBetweenEvents);
     document.querySelector('.pinpoint__submit-btn').click();
 }
 
@@ -87,14 +89,14 @@ const solverCrossClimbGamePuzzle = async (answer) => {
 const solverLotkaGamePuzzle = async (answer) => {
     for (const [idx, cell] of document.querySelectorAll(".lotka-cell").entries()) {
         if (cell.classList.contains("lotka-cell--locked")) continue;
-        await sleep(200);
+        await sleep(delayBetweenEvents);
         const ans = answer[idx];
         if (ans === "ZERO") {
             mouseDownUp(cell);
         }
         else if (ans === "ONE") {
             mouseDownUp(cell);
-            await sleep(200);
+            await sleep(delayBetweenEvents);
             mouseDownUp(cell);
         }
     }
@@ -103,21 +105,21 @@ const solverLotkaGamePuzzle = async (answer) => {
 const solverMiniSudokuGamePuzzle = async (answer) => {
     for (const [idx, cell] of document.querySelectorAll(".sudoku-cell").entries()) {
         if (cell.classList.contains("sudoku-cell-prefilled")) continue;
-        await sleep(200);
+        await sleep(delayBetweenEvents);
         mouseDownUp(cell);
-        await sleep(200);
+        await sleep(delayBetweenEvents);
         document.querySelectorAll(".sudoku-input-button")[answer[idx] - 1].click();
     }
 }
 
 const solverQueensGamePuzzle = async (answer) => {
     let n = Math.max(...answer.map(x => x.col));
-    await sleep(200);
+    await sleep(delayBetweenEvents);
     n += 1;
     for (const [idx, cell] of document.querySelectorAll(".queens-cell-with-border").entries()) {
         if (answer.find(x => x.row === Math.floor(idx / n) && x.col === (idx % n))) {
             await mouseDownUp(cell);
-            await sleep(200);
+            await sleep(delayBetweenEvents);
             await mouseDownUp(cell);
         }
     }
@@ -128,7 +130,7 @@ const solverTrailGamePuzzle = async (answer) => {
     for (const ans of answer) {
         const cell = document.querySelector(`div[data-cell-idx="${ans}"]`);
         await mouseDownUp(cell);
-        await sleep(50);
+        await sleep(30);
     }
 }
 
@@ -154,7 +156,7 @@ overrideXhr(window, (data) => {
                 onElementReady(".pr-game-web__aux-controls", async () => {
                     if (document.querySelector(".games-share-footer__share-btn")) return;
                     solverCrossClimbGamePuzzle(gamePuzzle.crossClimbGamePuzzle.rungs);
-                    await sleep(4000);
+                    await sleep(3000);
                     solverCrossClimbGamePuzzle(gamePuzzle.crossClimbGamePuzzle.rungs);
                 });
                 break;
