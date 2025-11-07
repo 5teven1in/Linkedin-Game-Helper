@@ -55,7 +55,7 @@ const sleep = async (ms) => {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-const delayBetweenEvents = 150;
+const delayBetweenEvents = 70;
 
 const mouseDownUp = async (node) => {
     if (node) node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -114,7 +114,7 @@ const solverMiniSudokuGamePuzzle = async (answer) => {
 
 const solverQueensGamePuzzle = async (answer) => {
     let n = Math.max(...answer.map(x => x.col));
-    await sleep(delayBetweenEvents);
+    await sleep(500);
     n += 1;
     for (const [idx, cell] of document.querySelectorAll(".queens-cell-with-border").entries()) {
         if (answer.find(x => x.row === Math.floor(idx / n) && x.col === (idx % n))) {
@@ -130,7 +130,7 @@ const solverTrailGamePuzzle = async (answer) => {
     for (const ans of answer) {
         const cell = document.querySelector(`div[data-cell-idx="${ans}"]`);
         await mouseDownUp(cell);
-        await sleep(30);
+        await sleep(10);
     }
 }
 
@@ -156,7 +156,7 @@ overrideXhr(window, (data) => {
                 onElementReady(".pr-game-web__aux-controls", async () => {
                     if (document.querySelector(".games-share-footer__share-btn")) return;
                     solverCrossClimbGamePuzzle(gamePuzzle.crossClimbGamePuzzle.rungs);
-                    await sleep(3000);
+                    await sleep(2500);
                     solverCrossClimbGamePuzzle(gamePuzzle.crossClimbGamePuzzle.rungs);
                 });
                 break;
