@@ -87,14 +87,14 @@ const solverCrossClimbGamePuzzle = async (answer) => {
 }
 
 const solverLotkaGamePuzzle = async (answer) => {
-    for (const [idx, cell] of document.querySelectorAll(".lotka-cell").entries()) {
-        if (cell.classList.contains("lotka-cell--locked")) continue;
+    await sleep(3000);
+    for (const [idx, ans] of answer.entries()) {
         await sleep(delayBetweenEvents);
-        const ans = answer[idx];
-        if (ans === "ZERO") {
+        const cell = document.querySelector(`div[data-cell-idx="${idx}"]`);
+        if (ans === "LotkaCellValue_ZERO") {
             mouseDownUp(cell);
         }
-        else if (ans === "ONE") {
+        else if (ans === "LotkaCellValue_ONE") {
             mouseDownUp(cell);
             await sleep(delayBetweenEvents);
             mouseDownUp(cell);
@@ -161,12 +161,7 @@ overrideXhr(window, (data) => {
                 });
                 break;
             case "lotkaGamePuzzle":
-                const n = Math.floor(gamePuzzle.lotkaGamePuzzle.solution.length ** 0.5);
-                for (let i = 0; i < n; i++) console.log("[Game Bot]", gamePuzzle.lotkaGamePuzzle.solution.slice(n * i, n * i + n));
-                onElementReady(".pr-game-web__aux-controls", () => {
-                    if (document.querySelector(".games-share-footer__share-btn")) return;
-                    solverLotkaGamePuzzle(gamePuzzle.lotkaGamePuzzle.solution);
-                });
+                console.log("[Game Bot] The solution of lotkaGamePuzzle is not here.");
                 break;
             case "miniSudokuGamePuzzle":
                 for (let i = 0; i < 6; i++) console.log("[Game Bot]", gamePuzzle.miniSudokuGamePuzzle.solution.slice(6 * i, 6 * i + 6));
@@ -191,23 +186,28 @@ overrideXhr(window, (data) => {
 
 let pollingTimeoutId = null;
 
-const trySolveTrailGamePuzzle = () => {
+const trySolveGamePuzzle = () => {
     const targetElement = document.querySelector("#rehydrate-data");
     if (targetElement) {
-        const match = targetElement.text.match(/"solution\\":(\[[\d,]+\])/);
-        const answer = match ? JSON.parse(match[1]) : [];
+        const match = targetElement.text.match(/"solution\\":(\[.*?\])/);
+        const answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
         console.log("[Game Bot]", answer);
-        solverTrailGamePuzzle(answer);
+        if (match[1].includes("Lotka")) {
+            solverLotkaGamePuzzle(answer);
+        }
+        else {
+            solverTrailGamePuzzle(answer);
+        }
         clearTimeout(pollingTimeoutId);
         pollingTimeoutId = null;
     } else {
-        pollingTimeoutId = setTimeout(trySolveTrailGamePuzzle, 200);
+        pollingTimeoutId = setTimeout(trySolveGamePuzzle, 200);
     }
 }
 
 const startPolling = () => {
     if (pollingTimeoutId === null) {
-        trySolveTrailGamePuzzle();
+        trySolveGamePuzzle();
     }
 }
 
