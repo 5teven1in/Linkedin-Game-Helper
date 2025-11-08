@@ -2,6 +2,8 @@
 
 This extension helps you achieve better scores in Linkedin games.
 
+![](demo/demo.gif)
+
 ## Installation
 
 1. Download or clone this repository to your computer
