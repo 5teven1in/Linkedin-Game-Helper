@@ -87,7 +87,7 @@ const solverCrossClimbGamePuzzle = async (answer) => {
 }
 
 const solverLotkaGamePuzzle = async (answer) => {
-    await sleep(3000);
+    await sleep(1500);
     for (const [idx, ans] of answer.entries()) {
         await sleep(delayBetweenEvents);
         const cell = document.querySelector(`div[data-cell-idx="${idx}"]`);
@@ -126,7 +126,7 @@ const solverQueensGamePuzzle = async (answer) => {
 }
 
 const solverTrailGamePuzzle = async (answer) => {
-    await sleep(1000);
+    await sleep(1500);
     for (const ans of answer) {
         const cell = document.querySelector(`div[data-cell-idx="${ans}"]`);
         await mouseDownUp(cell);
