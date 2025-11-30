@@ -114,14 +114,13 @@ const solverMiniSudokuGamePuzzle = async (answer) => {
 
 const solverQueensGamePuzzle = async (answer) => {
     let n = Math.max(...answer.map(x => x.col));
-    await sleep(500);
+    await sleep(1500);
     n += 1;
-    for (const [idx, cell] of document.querySelectorAll(".queens-cell-with-border").entries()) {
-        if (answer.find(x => x.row === Math.floor(idx / n) && x.col === (idx % n))) {
-            await mouseDownUp(cell);
-            await sleep(delayBetweenEvents);
-            await mouseDownUp(cell);
-        }
+    for (let i = 0; i < n; i++) {
+        const cell = document.querySelector(`div[data-cell-idx="${i * n + answer[i].col}"]`);
+        await mouseDownUp(cell);
+        await sleep(delayBetweenEvents);
+        await mouseDownUp(cell);
     }
 }
 
@@ -171,11 +170,7 @@ overrideXhr(window, (data) => {
                 });
                 break;
             case "queensGamePuzzle":
-                gamePuzzle.queensGamePuzzle.solution.forEach((x) => console.log("[Game Bot]", x.col));
-                onElementReady(".pr-game-web__aux-controls", () => {
-                    if (document.querySelector(".games-share-footer__share-btn")) return;
-                    solverQueensGamePuzzle(gamePuzzle.queensGamePuzzle.solution);
-                });
+                console.log("[Game Bot] The solution of queensGamePuzzle is not here.");
                 break;
             case "trailGamePuzzle":
                 console.log("[Game Bot] The solution of trailGamePuzzle is not here.");
@@ -192,11 +187,19 @@ const trySolveGamePuzzle = () => {
         const match = targetElement.text.match(/"solution\\":(\[.*?\])/);
         const answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
         console.log("[Game Bot]", answer);
-        if (match[1].includes("Lotka")) {
-            solverLotkaGamePuzzle(answer);
-        }
-        else {
-            solverTrailGamePuzzle(answer);
+        const gameName = window.location.pathname.slice("/games/".length).split("/")[0];
+        switch (gameName) {
+            case "tango":
+                solverLotkaGamePuzzle(answer);
+                break;
+            case "queens":
+                solverQueensGamePuzzle(answer);
+                break;
+            case "zip":
+                solverTrailGamePuzzle(answer);
+                break;
+            default:
+                break;
         }
         clearTimeout(pollingTimeoutId);
         pollingTimeoutId = null;
