@@ -63,6 +63,31 @@ const mouseDownUp = async (node) => {
     if (node) node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 }
 
+const mouseEnterLeave = async (nodes) => {
+    if (!nodes || nodes.length === 0) return;
+    const fire = (el, type) => {
+        const event = new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            buttons: 1 // 模擬滑鼠左鍵按下的狀態
+        });
+        el.dispatchEvent(event);
+    };
+    nodes.forEach(async (el, index) => {
+        if (index === 0) {
+            fire(el, 'mousedown');
+            fire(el, 'mousemove');
+        } else if (index === nodes.length - 1) {
+            fire(el, 'mousemove');
+            fire(el, 'mouseup');
+        } else {
+            fire(el, 'mousemove');
+        }
+        await sleep(delayBetweenEvents);
+    });
+}
+
 const solverBlueprintGamePuzzle = async (answer) => {
     const inp = document.querySelector('.pinpoint__input');
     if (inp.value) return;
@@ -133,6 +158,15 @@ const solverTrailGamePuzzle = async (answer) => {
     }
 }
 
+const solverPatchesGamePuzzle = async (answer) => {
+    await sleep(2500);
+    for (const ans of answer) {
+        const block = ans.cellIdxes.map(idx => document.querySelector(`div[data-cell-idx="${idx}"]`));
+        mouseEnterLeave(block);
+        await sleep(50);
+    }
+}
+
 overrideXhr(window, (data) => {
     if (data.data.requestUrl.includes("queryId=voyagerIdentityDashGames.")) {
         const response_data = JSON.parse(data.data.responseText);
@@ -184,19 +218,33 @@ let pollingTimeoutId = null;
 const trySolveGamePuzzle = () => {
     const targetElement = document.querySelector("#rehydrate-data");
     if (targetElement) {
-        const match = targetElement.text.match(/"solution\\":(\[.*?\])/);
-        const answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
-        console.log("[Game Bot]", answer);
+        let answer = [];
+        let match = null;
         const gameName = window.location.pathname.slice("/games/".length).split("/")[0];
         switch (gameName) {
             case "tango":
+                match = targetElement.text.match(/"solution\\":(.*)}},\\"gameState\\"/);
+                answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
+                console.log("[Game Bot]", answer);
                 solverLotkaGamePuzzle(answer);
                 break;
             case "queens":
+                match = targetElement.text.match(/"solution\\":(.*),\\"colorGrid\\"/);
+                answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
+                console.log("[Game Bot]", answer);
                 solverQueensGamePuzzle(answer);
                 break;
             case "zip":
+                match = targetElement.text.match(/"solution\\":(.*),\\"walls\\"/);
+                answer = match ? JSON.parse(match[1]) : [];
+                console.log("[Game Bot]", answer);
                 solverTrailGamePuzzle(answer);
+                break;
+            case "patches":
+                match = targetElement.text.match(/"solution\\":(.*)}},\\"gameState\\"/);
+                answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
+                console.log("[Game Bot]", answer);
+                solverPatchesGamePuzzle(answer);
                 break;
             default:
                 break;
