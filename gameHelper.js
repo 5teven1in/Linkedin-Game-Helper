@@ -74,18 +74,18 @@ const mouseEnterLeave = async (nodes) => {
         });
         el.dispatchEvent(event);
     };
-    nodes.forEach(async (el, index) => {
+    for (const [index, node] of nodes.entries()) {
         if (index === 0) {
-            fire(el, 'mousedown');
-            fire(el, 'mousemove');
+            fire(node, 'mousedown');
+            fire(node, 'mousemove');
         } else if (index === nodes.length - 1) {
-            fire(el, 'mousemove');
-            fire(el, 'mouseup');
+            fire(node, 'mousemove');
+            fire(node, 'mouseup');
         } else {
-            fire(el, 'mousemove');
+            fire(node, 'mousemove');
         }
         await sleep(delayBetweenEvents);
-    });
+    }
 }
 
 const solverBlueprintGamePuzzle = async (answer) => {
@@ -159,11 +159,11 @@ const solverTrailGamePuzzle = async (answer) => {
 }
 
 const solverPatchesGamePuzzle = async (answer) => {
-    await sleep(2500);
+    await sleep(1500);
     for (const ans of answer) {
         const block = ans.cellIdxes.map(idx => document.querySelector(`div[data-cell-idx="${idx}"]`));
-        mouseEnterLeave(block);
-        await sleep(50);
+        await mouseEnterLeave(block);
+        await sleep(10);
     }
 }
 
