@@ -4,8 +4,9 @@ This extension helps you achieve better scores in Linkedin games.
 
 ## Leaderboard
 
+- Patches - 0:04
 - Mini Sudoku - 0:02
-- Zip - 0:03
+- Zip - 0:02
 - Tango - 0:02
 - Queens - 0:02
 - Pinpoint - 1
