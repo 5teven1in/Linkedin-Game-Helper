@@ -59,7 +59,7 @@ const delayBetweenEvents = 70;
 
 const mouseDownUp = async (node) => {
     if (node) node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    await sleep(delayBetweenEvents);
+    await sleep(10);
     if (node) node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 }
 
@@ -84,7 +84,7 @@ const mouseEnterLeave = async (nodes) => {
         } else {
             fire(node, 'mousemove');
         }
-        await sleep(delayBetweenEvents);
+        await sleep(10);
     }
 }
 
