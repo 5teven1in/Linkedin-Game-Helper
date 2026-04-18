@@ -163,7 +163,7 @@ const solverPatchesGamePuzzle = async (answer) => {
     for (const ans of answer) {
         const block = ans.cellIdxes.map(idx => document.querySelector(`div[data-cell-idx="${idx}"]`));
         await mouseEnterLeave(block);
-        await sleep(10);
+        await sleep(delayBetweenEvents);
     }
 }
 
