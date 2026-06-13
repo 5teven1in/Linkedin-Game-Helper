@@ -88,6 +88,80 @@ const mouseEnterLeave = async (nodes) => {
     }
 }
 
+const getElementCenter = (el) => {
+    const rect = el.getBoundingClientRect();
+    return {
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+    };
+}
+
+const dragThroughCells = async (nodes) => {
+    if (!nodes || nodes.length === 0) return;
+
+    const firePointer = (target, type, coordinates, buttons = 1) => {
+        if (!window.PointerEvent) return;
+        target.dispatchEvent(new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            pointerId: 1,
+            pointerType: "mouse",
+            isPrimary: true,
+            button: 0,
+            buttons,
+            ...coordinates,
+        }));
+    };
+
+    const fireMouse = (target, type, coordinates, buttons = 1) => {
+        target.dispatchEvent(new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            button: 0,
+            buttons,
+            ...coordinates,
+        }));
+    };
+
+    const moveTo = async (coordinates) => {
+        const target = document.elementFromPoint(coordinates.clientX, coordinates.clientY) || document;
+        firePointer(target, "pointermove", coordinates);
+        fireMouse(target, "mousemove", coordinates);
+        firePointer(document, "pointermove", coordinates);
+        fireMouse(document, "mousemove", coordinates);
+        await sleep(20);
+    };
+
+    const points = nodes.map(getElementCenter);
+    const startTarget = document.elementFromPoint(points[0].clientX, points[0].clientY) || nodes[0];
+    firePointer(startTarget, "pointerover", points[0]);
+    firePointer(startTarget, "pointerenter", points[0]);
+    fireMouse(startTarget, "mouseover", points[0]);
+    fireMouse(startTarget, "mouseenter", points[0]);
+    firePointer(startTarget, "pointerdown", points[0]);
+    fireMouse(startTarget, "mousedown", points[0]);
+    await sleep(delayBetweenEvents);
+
+    for (let i = 1; i < points.length; i++) {
+        const from = points[i - 1];
+        const to = points[i];
+        const steps = 8;
+        for (let step = 1; step <= steps; step++) {
+            await moveTo({
+                clientX: from.clientX + ((to.clientX - from.clientX) * step) / steps,
+                clientY: from.clientY + ((to.clientY - from.clientY) * step) / steps,
+            });
+        }
+        await sleep(delayBetweenEvents);
+    }
+
+    const endTarget = document.elementFromPoint(points[points.length - 1].clientX, points[points.length - 1].clientY) || nodes[nodes.length - 1];
+    firePointer(endTarget, "pointerup", points[points.length - 1], 0);
+    fireMouse(endTarget, "mouseup", points[points.length - 1], 0);
+}
+
 const solverBlueprintGamePuzzle = async (answer) => {
     const inp = document.querySelector('.pinpoint__input');
     if (inp.value) return;
@@ -112,7 +186,7 @@ const solverCrossClimbGamePuzzle = async (answer) => {
 }
 
 const solverLotkaGamePuzzle = async (answer) => {
-    await sleep(1500);
+    await sleep(2000);
     for (const [idx, ans] of answer.entries()) {
         await sleep(delayBetweenEvents);
         const cell = document.querySelector(`div[data-cell-idx="${idx}"]`);
@@ -139,7 +213,7 @@ const solverMiniSudokuGamePuzzle = async (answer) => {
 
 const solverQueensGamePuzzle = async (answer) => {
     let n = Math.max(...answer.map(x => x.col));
-    await sleep(1500);
+    await sleep(2000);
     n += 1;
     for (let i = 0; i < n; i++) {
         const cell = document.querySelector(`div[data-cell-idx="${i * n + answer[i].col}"]`);
@@ -150,7 +224,7 @@ const solverQueensGamePuzzle = async (answer) => {
 }
 
 const solverTrailGamePuzzle = async (answer) => {
-    await sleep(1500);
+    await sleep(2000);
     for (const ans of answer) {
         const cell = document.querySelector(`div[data-cell-idx="${ans}"]`);
         await mouseDownUp(cell);
@@ -159,12 +233,73 @@ const solverTrailGamePuzzle = async (answer) => {
 }
 
 const solverPatchesGamePuzzle = async (answer) => {
-    await sleep(1500);
+    await sleep(2000);
     for (const ans of answer) {
         const block = ans.cellIdxes.map(idx => document.querySelector(`div[data-cell-idx="${idx}"]`));
         await mouseEnterLeave(block);
         await sleep(delayBetweenEvents);
     }
+}
+
+const solverWendGamePuzzle = async (answer) => {
+    await sleep(2000);
+    for (const ans of answer) {
+        const block = ans.sequencingIndex.map(idx => document.querySelector(`[data-cell-idx="${idx}"]`));
+        if (block.some(node => !node)) {
+            console.warn("[Game Bot] Wend cell not found.", ans.sequencingIndex);
+            continue;
+        }
+        console.log("[Game Bot]", ans.sequencingIndex);
+        await dragThroughCells(block);
+        await sleep(delayBetweenEvents);
+    }
+}
+
+const parseJsonValueForKey = (text, key) => {
+    const normalizedText = text.replace(/\\"/g, '"');
+    const keyIndex = normalizedText.indexOf(`"${key}"`);
+    if (keyIndex === -1) return null;
+
+    const colonIndex = normalizedText.indexOf(":", keyIndex);
+    if (colonIndex === -1) return null;
+
+    const valueStart = normalizedText.slice(colonIndex + 1).search(/[\[{]/);
+    if (valueStart === -1) return null;
+
+    const startIndex = colonIndex + 1 + valueStart;
+    const openChar = normalizedText[startIndex];
+    const closeChar = openChar === "[" ? "]" : "}";
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = startIndex; i < normalizedText.length; i++) {
+        const char = normalizedText[i];
+
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (char === "\\") {
+                escaped = true;
+            } else if (char === '"') {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (char === '"') {
+            inString = true;
+        } else if (char === openChar) {
+            depth++;
+        } else if (char === closeChar) {
+            depth--;
+            if (depth === 0) {
+                return JSON.parse(normalizedText.slice(startIndex, i + 1));
+            }
+        }
+    }
+
+    return null;
 }
 
 overrideXhr(window, (data) => {
@@ -245,6 +380,11 @@ const trySolveGamePuzzle = () => {
                 answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
                 console.log("[Game Bot]", answer);
                 solverPatchesGamePuzzle(answer);
+                break;
+            case "wend":
+                answer = parseJsonValueForKey(targetElement.text, "solutionWords") || [];
+                console.log("[Game Bot]", answer);
+                solverWendGamePuzzle(answer);
                 break;
             default:
                 break;
