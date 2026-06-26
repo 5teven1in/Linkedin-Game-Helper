@@ -56,6 +56,14 @@ const sleep = async (ms) => {
 }
 
 const delayBetweenEvents = 70;
+const minPuzzleInteractionDurationMs = 1500;
+
+const waitForMinimumElapsed = async (startedAt, minimumMs) => {
+    const elapsed = performance.now() - startedAt;
+    if (elapsed < minimumMs) {
+        await sleep(minimumMs - elapsed);
+    }
+}
 
 const mouseDownUp = async (node) => {
     if (node) node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -215,18 +223,26 @@ const solverQueensGamePuzzle = async (answer) => {
     let n = Math.max(...answer.map(x => x.col));
     await sleep(2000);
     n += 1;
+    const interactionStartedAt = performance.now();
     for (let i = 0; i < n; i++) {
         const cell = document.querySelector(`div[data-cell-idx="${i * n + answer[i].col}"]`);
         await mouseDownUp(cell);
         await sleep(delayBetweenEvents);
+        if (i === n - 1) {
+            await waitForMinimumElapsed(interactionStartedAt, minPuzzleInteractionDurationMs);
+        }
         await mouseDownUp(cell);
     }
 }
 
 const solverTrailGamePuzzle = async (answer) => {
     await sleep(2000);
-    for (const ans of answer) {
+    const interactionStartedAt = performance.now();
+    for (const [idx, ans] of answer.entries()) {
         const cell = document.querySelector(`div[data-cell-idx="${ans}"]`);
+        if (idx === answer.length - 1) {
+            await waitForMinimumElapsed(interactionStartedAt, minPuzzleInteractionDurationMs);
+        }
         await mouseDownUp(cell);
         await sleep(10);
     }
@@ -234,8 +250,12 @@ const solverTrailGamePuzzle = async (answer) => {
 
 const solverPatchesGamePuzzle = async (answer) => {
     await sleep(2000);
-    for (const ans of answer) {
+    const interactionStartedAt = performance.now();
+    for (const [idx, ans] of answer.entries()) {
         const block = ans.cellIdxes.map(idx => document.querySelector(`div[data-cell-idx="${idx}"]`));
+        if (idx === answer.length - 1) {
+            await waitForMinimumElapsed(interactionStartedAt, minPuzzleInteractionDurationMs);
+        }
         await mouseEnterLeave(block);
         await sleep(delayBetweenEvents);
     }
