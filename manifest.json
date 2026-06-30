@@ -17,7 +17,12 @@
             ]
         }
     ],
-    "permissions": [],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "permissions": [
+        "alarms"
+    ],
     "host_permissions": [
         "https://www.linkedin.com/games/*",
         "https://www.linkedin.com/voyager/api/graphql"

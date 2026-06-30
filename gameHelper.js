@@ -56,7 +56,7 @@ const sleep = async (ms) => {
 }
 
 const delayBetweenEvents = 70;
-const minPuzzleInteractionDurationMs = 1500;
+const minPuzzleInteractionDurationMs = 2200;
 
 const waitForMinimumElapsed = async (startedAt, minimumMs) => {
     const elapsed = performance.now() - startedAt;
