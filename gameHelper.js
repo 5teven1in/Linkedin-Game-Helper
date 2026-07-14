@@ -71,6 +71,48 @@ const mouseDownUp = async (node) => {
     if (node) node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 }
 
+const getTangoCells = (expectedCount) => {
+    const indexedCells = Array.from(document.querySelectorAll('[data-cell-idx], [data-cell-index]'));
+    const cellsByIndex = new Map();
+    for (const cell of indexedCells) {
+        const rawIndex = cell.getAttribute('data-cell-idx') ?? cell.getAttribute('data-cell-index');
+        const index = Number(rawIndex);
+        if (Number.isInteger(index) && !cellsByIndex.has(index)) {
+            cellsByIndex.set(index, cell);
+        }
+    }
+
+    const cellsInIndexOrder = Array.from({ length: expectedCount }, (_, index) => cellsByIndex.get(index));
+    if (cellsInIndexOrder.every(Boolean)) return cellsInIndexOrder;
+
+    const board = document.querySelector('[role="grid"]') ?? document.querySelector('#workspace');
+    if (!board) return [];
+
+    const gridCells = Array.from(board.querySelectorAll('[role="gridcell"]'));
+    if (gridCells.length >= expectedCount) return gridCells.slice(0, expectedCount);
+
+    const buttons = Array.from(board.querySelectorAll('button')).filter(button => !button.disabled);
+    return buttons.length >= expectedCount ? buttons.slice(0, expectedCount) : [];
+}
+
+const waitForTangoCells = async (expectedCount, timeoutMs = 15000) => {
+    const deadline = performance.now() + timeoutMs;
+    let cells = [];
+    while (performance.now() < deadline) {
+        cells = getTangoCells(expectedCount);
+        if (cells.length >= expectedCount) return cells;
+        await sleep(100);
+    }
+    return cells;
+}
+
+const activateTangoCell = async (cell) => {
+    if (!cell) return false;
+
+    await mouseDownUp(cell);
+    return true;
+}
+
 const mouseEnterLeave = async (nodes) => {
     if (!nodes || nodes.length === 0) return;
     const fire = (el, type) => {
@@ -194,17 +236,28 @@ const solverCrossClimbGamePuzzle = async (answer) => {
 }
 
 const solverLotkaGamePuzzle = async (answer) => {
+    if (!Array.isArray(answer) || answer.length === 0) {
+        console.warn('[Game Bot] Tango solution is empty.');
+        return;
+    }
+
+    const cells = await waitForTangoCells(answer.length);
+    if (cells.length < answer.length) {
+        console.warn(`[Game Bot] Tango board not ready: found ${cells.length}/${answer.length} cells.`);
+        return;
+    }
+
     await sleep(2000);
     for (const [idx, ans] of answer.entries()) {
         await sleep(delayBetweenEvents);
-        const cell = document.querySelector(`div[data-cell-idx="${idx}"]`);
+        const cell = cells[idx];
         if (ans === "LotkaCellValue_ZERO") {
-            mouseDownUp(cell);
+            await activateTangoCell(cell);
         }
         else if (ans === "LotkaCellValue_ONE") {
-            mouseDownUp(cell);
+            await activateTangoCell(cell);
             await sleep(delayBetweenEvents);
-            mouseDownUp(cell);
+            await activateTangoCell(cell);
         }
     }
 }
