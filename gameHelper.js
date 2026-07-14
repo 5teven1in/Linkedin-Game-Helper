@@ -431,8 +431,7 @@ const trySolveGamePuzzle = () => {
         const gameName = window.location.pathname.slice("/games/".length).split("/")[0];
         switch (gameName) {
             case "tango":
-                match = targetElement.text.match(/"solution\\":(.*)}},\\"gameState\\"/);
-                answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
+                answer = parseJsonValueForKey(targetElement.text, "solution") || [];
                 console.log("[Game Bot]", answer);
                 solverLotkaGamePuzzle(answer);
                 break;
@@ -449,8 +448,7 @@ const trySolveGamePuzzle = () => {
                 solverTrailGamePuzzle(answer);
                 break;
             case "patches":
-                match = targetElement.text.match(/"solution\\":(.*)}},\\"gameState\\"/);
-                answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
+                answer = parseJsonValueForKey(targetElement.text, "solution") || [];
                 console.log("[Game Bot]", answer);
                 solverPatchesGamePuzzle(answer);
                 break;
