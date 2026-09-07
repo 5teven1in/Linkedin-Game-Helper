@@ -1,55 +1,5 @@
-const overrideXhr = (window, callback) => {
-    const _open = window.XMLHttpRequest.prototype.open;
-    const _setRequestHeader = window.XMLHttpRequest.prototype.setRequestHeader;
-    const REQUEST_HEADERS_PROP = 'chromane_request_headers';
-    window.XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-        let headers = this[REQUEST_HEADERS_PROP];
-        if (!headers) {
-            headers = {};
-            this[REQUEST_HEADERS_PROP] = headers;
-        }
-        headers[name] = value;
-        return _setRequestHeader.apply(this, arguments);
-    };
-    window.XMLHttpRequest.prototype.open = function (method, requestUrl) {
-        this.addEventListener('load', () => {
-            const responseStatus = this.status;
-            const responseType = this.responseType;
-            const requestHeaders = this[REQUEST_HEADERS_PROP] || {};
-            if (responseType === 'blob') {
-                const blob = this.response;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const response = event.target?.result;
-                    const message = {
-                        name: 'xhr_response_captured',
-                        data: {
-                            status: responseStatus,
-                            responseText: response,
-                            requestUrl: requestUrl,
-                            responseUrl: this.responseURL,
-                            requestHeaders: requestHeaders,
-                        },
-                    };
-                    callback(message);
-                };
-                reader.readAsText(blob);
-            }
-        });
-        return _open.apply(this, arguments);
-    };
-};
-
-const onElementReady = (selector, callback) => {
-    const observer = new MutationObserver(() => {
-        const el = document.querySelector(selector);
-        if (el) {
-            observer.disconnect();
-            callback(el);
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-}
+(() => {
+"use strict";
 
 const sleep = async (ms) => {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -114,7 +64,11 @@ const activateTangoCell = async (cell) => {
 }
 
 const mouseEnterLeave = async (nodes) => {
-    if (!nodes || nodes.length === 0) return;
+    if (!Array.isArray(nodes) || nodes.length === 0) return false;
+    if (nodes.some(node => !node?.isConnected)) {
+        console.warn("[Game Bot] Patches cell not found.");
+        return false;
+    }
     const fire = (el, type) => {
         const event = new MouseEvent(type, {
             bubbles: true,
@@ -136,6 +90,7 @@ const mouseEnterLeave = async (nodes) => {
         }
         await sleep(10);
     }
+    return true;
 }
 
 const getElementCenter = (el) => {
@@ -224,8 +179,9 @@ const solverBlueprintGamePuzzle = async (answer) => {
 
 const solverCrossClimbGamePuzzle = async (answer) => {
     document.querySelectorAll(".crossclimb__guess__inner").forEach((el, idx) => {
-        inps = el.querySelectorAll("input");
-        ans = answer[idx].word;
+        const inps = el.querySelectorAll("input");
+        const ans = answer[idx]?.word;
+        if (!ans) return;
         inps.forEach((inp, idx) => {
             if (inp.value) return;
             inp.value = ans[idx];
@@ -266,7 +222,7 @@ const solverMiniSudokuGamePuzzle = async (answer) => {
     for (const [idx, cell] of document.querySelectorAll(".sudoku-cell").entries()) {
         if (cell.classList.contains("sudoku-cell-prefilled")) continue;
         await sleep(delayBetweenEvents);
-        mouseDownUp(cell);
+        await mouseDownUp(cell);
         await sleep(delayBetweenEvents);
         document.querySelectorAll(".sudoku-input-button")[answer[idx] - 1].click();
     }
@@ -305,7 +261,16 @@ const solverPatchesGamePuzzle = async (answer) => {
     await sleep(2000);
     const interactionStartedAt = performance.now();
     for (const [idx, ans] of answer.entries()) {
-        const block = ans.cellIdxes.map(idx => document.querySelector(`div[data-cell-idx="${idx}"]`));
+        const cellIdxes = ans?.cellIdxes;
+        if (!Array.isArray(cellIdxes) || cellIdxes.length === 0) {
+            console.warn("[Game Bot] Invalid Patches cell indexes.", cellIdxes);
+            continue;
+        }
+        const block = cellIdxes.map(cellIdx => document.querySelector(`div[data-cell-idx="${cellIdx}"]`));
+        if (block.some(node => !node?.isConnected)) {
+            console.warn("[Game Bot] Patches cell not found.", cellIdxes);
+            continue;
+        }
         if (idx === answer.length - 1) {
             await waitForMinimumElapsed(interactionStartedAt, minPuzzleInteractionDurationMs);
         }
@@ -336,8 +301,9 @@ const parseJsonValueForKey = (text, key) => {
     const colonIndex = normalizedText.indexOf(":", keyIndex);
     if (colonIndex === -1) return null;
 
-    const valueStart = normalizedText.slice(colonIndex + 1).search(/[\[{]/);
-    if (valueStart === -1) return null;
+    // Do not consume an unrelated array when this field is null or a reference.
+    const valueStart = normalizedText.slice(colonIndex + 1).search(/\S/);
+    if (valueStart === -1 || !'[{'.includes(normalizedText[colonIndex + 1 + valueStart])) return null;
 
     const startIndex = colonIndex + 1 + valueStart;
     const openChar = normalizedText[startIndex];
@@ -375,102 +341,112 @@ const parseJsonValueForKey = (text, key) => {
     return null;
 }
 
-overrideXhr(window, (data) => {
-    if (data.data.requestUrl.includes("queryId=voyagerIdentityDashGames.")) {
-        const response_data = JSON.parse(data.data.responseText);
-        if (response_data?.included?.[0] && "gamePuzzle" in response_data.included[0])
-            console.log("[Game Bot] Detected game puzzle data.");
-        else
-            return;
-        const gamePuzzle = response_data.included[0].gamePuzzle;
-        const gameName = Object.keys(gamePuzzle).find(key => gamePuzzle[key] !== null);
-        switch (gameName) {
-            case "blueprintGamePuzzle":
-                console.log("[Game Bot]", gamePuzzle.blueprintGamePuzzle.solutions[0]);
-                onElementReady(".pr-game-web__aux-controls", () => {
-                    if (document.querySelector(".games-share-footer__share-btn")) return;
-                    solverBlueprintGamePuzzle(gamePuzzle.blueprintGamePuzzle.solutions[0]);
-                });
-                break;
-            case "crossClimbGamePuzzle":
-                gamePuzzle.crossClimbGamePuzzle.rungs.forEach((x) => console.log("[Game Bot]", x.word));
-                onElementReady(".pr-game-web__aux-controls", async () => {
-                    if (document.querySelector(".games-share-footer__share-btn")) return;
-                    solverCrossClimbGamePuzzle(gamePuzzle.crossClimbGamePuzzle.rungs);
-                    await sleep(2500);
-                    solverCrossClimbGamePuzzle(gamePuzzle.crossClimbGamePuzzle.rungs);
-                });
-                break;
-            case "lotkaGamePuzzle":
-                console.log("[Game Bot] The solution of lotkaGamePuzzle is not here.");
-                break;
-            case "miniSudokuGamePuzzle":
-                for (let i = 0; i < 6; i++) console.log("[Game Bot]", gamePuzzle.miniSudokuGamePuzzle.solution.slice(6 * i, 6 * i + 6));
-                onElementReady(".pr-game-web__aux-controls", () => {
-                    if (document.querySelector(".games-share-footer__share-btn")) return;
-                    solverMiniSudokuGamePuzzle(gamePuzzle.miniSudokuGamePuzzle.solution);
-                });
-                break;
-            case "queensGamePuzzle":
-                console.log("[Game Bot] The solution of queensGamePuzzle is not here.");
-                break;
-            case "trailGamePuzzle":
-                console.log("[Game Bot] The solution of trailGamePuzzle is not here.");
-                break;
+// Capture puzzle payloads without changing the response delivered to LinkedIn.
+const puzzles = new Map();
+const collectPuzzles = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (value.gamePuzzle) {
+        for (const [key, puzzle] of Object.entries(value.gamePuzzle)) {
+            if (puzzle) puzzles.set(key, puzzle);
         }
     }
+    for (const child of Object.values(value)) collectPuzzles(child);
+};
+const capture = (url, text) => {
+    if (!String(url).includes('/voyager/api/')) return;
+    try { collectPuzzles(JSON.parse(text)); } catch { /* Non-JSON response. */ }
+};
+const nativeOpen = XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open = function (...args) {
+    if (!this.__lghObserved) {
+        this.__lghObserved = true;
+        this.addEventListener('load', async () => {
+            try {
+                if (this.responseType === 'blob') capture(this.responseURL, await this.response.text());
+                else if (this.responseType === 'json') collectPuzzles(this.response);
+                else if (!this.responseType || this.responseType === 'text') capture(this.responseURL, this.responseText);
+            } catch { /* Ignore unrelated requests. */ }
+        });
+    }
+    return nativeOpen.apply(this, args);
+};
+const nativeFetch = window.fetch;
+window.fetch = async function (...args) {
+    const response = await nativeFetch.apply(this, args);
+    if (response.url.includes('/voyager/api/')) {
+        response.clone().text().then(text => capture(response.url, text)).catch(() => {});
+    }
+    return response;
+};
+
+const registry = {
+    pinpoint: { key: 'blueprintGamePuzzle', field: 'solutions', selector: '.pinpoint__input', solve: a => solverBlueprintGamePuzzle(a[0]) },
+    crossclimb: { key: 'crossClimbGamePuzzle', field: 'rungs', selector: '.crossclimb__guess__inner input', solve: async a => {
+        await solverCrossClimbGamePuzzle(a);
+        await sleep(2500);
+        await solverCrossClimbGamePuzzle(a);
+    } },
+    'mini-sudoku': { key: 'miniSudokuGamePuzzle', field: 'solution', selector: '.sudoku-cell', solve: solverMiniSudokuGamePuzzle },
+    tango: { key: 'lotkaGamePuzzle', field: 'solution', selector: '[data-cell-idx], [data-cell-index], [role="gridcell"]', solve: solverLotkaGamePuzzle },
+    queens: { key: 'queensGamePuzzle', field: 'solution', selector: '[data-cell-idx]', solve: solverQueensGamePuzzle },
+    zip: { key: 'trailGamePuzzle', field: 'solution', selector: '[data-cell-idx]', solve: solverTrailGamePuzzle },
+    patches: { key: 'patchesGamePuzzle', field: 'solution', selector: '[data-cell-idx]', solve: solverPatchesGamePuzzle },
+    wend: { key: 'wendGamePuzzle', field: 'solutionWords', selector: '[data-cell-idx]', solve: solverWendGamePuzzle },
+};
+// Como removes both the hydration element and its global after mounting React.
+// Capture before the board is ready, rather than reading them only from ready().
+const hydrationAnswers = new Map();
+const scannedPayloads = new WeakMap();
+let hydrationPath = location.pathname;
+const captureHydration = () => {
+    if (location.pathname !== hydrationPath) {
+        hydrationPath = location.pathname;
+        hydrationAnswers.clear();
+        puzzles.clear();
+    }
+    const slug = window.LGHQueue.slugFor(hydrationPath);
+    const spec = registry[slug];
+    if (!spec || hydrationAnswers.has(slug)) return;
+    // Voyager can deliver the initial response as embedded JSON, without XHR.
+    for (const node of document.querySelectorAll('code[id^="bpr-guid-"]')) {
+        const text = node.textContent;
+        if (!text || scannedPayloads.get(node) === text) continue;
+        try {
+            collectPuzzles(JSON.parse(text));
+            scannedPayloads.set(node, text);
+        } catch { /* Wait for the rest of a streamed JSON payload. */ }
+    }
+    const data = document.querySelector('#rehydrate-data');
+    const chunks = window.__como_rehydration__;
+    for (const text of [data?.textContent, Array.isArray(chunks) ? chunks.join('') : null]) {
+        if (!text) continue;
+        try {
+            const answer = parseJsonValueForKey(text, spec.field);
+            if (Array.isArray(answer) && answer.length) {
+                hydrationAnswers.set(slug, answer);
+                return;
+            }
+        } catch { /* The parser may still be streaming this element. */ }
+    }
+};
+new MutationObserver(captureHydration).observe(document, { childList: true, subtree: true, characterData: true });
+captureHydration();
+const getAnswer = (slug) => {
+    const spec = registry[slug];
+    if (!spec) return null;
+    captureHydration();
+    const cached = puzzles.get(spec.key)?.[spec.field];
+    if (cached) return cached;
+    return hydrationAnswers.get(slug) || null;
+};
+window.LGH = Object.freeze({
+    games: Object.keys(registry),
+    waitingReason: slug => !getAnswer(slug)?.length ? '等待解答資料…' : '等待棋盤或開始遊戲…',
+    ready: slug => Boolean(registry[slug] && document.querySelector(registry[slug].selector) && getAnswer(slug)?.length),
+    solve: async slug => {
+        const answer = getAnswer(slug);
+        if (!answer?.length) throw new Error('找不到遊戲解答');
+        await registry[slug].solve(answer);
+    },
 });
-
-let pollingTimeoutId = null;
-
-const trySolveGamePuzzle = () => {
-    const targetElement = document.querySelector("#rehydrate-data");
-    if (targetElement) {
-        let answer = [];
-        let match = null;
-        const gameName = window.location.pathname.slice("/games/".length).split("/")[0];
-        switch (gameName) {
-            case "tango":
-                answer = parseJsonValueForKey(targetElement.text, "solution") || [];
-                console.log("[Game Bot]", answer);
-                solverLotkaGamePuzzle(answer);
-                break;
-            case "queens":
-                match = targetElement.text.match(/"solution\\":(.*),\\"colorGrid\\"/);
-                answer = match ? JSON.parse(match[1].replaceAll("\\", "")) : [];
-                console.log("[Game Bot]", answer);
-                solverQueensGamePuzzle(answer);
-                break;
-            case "zip":
-                match = targetElement.text.match(/"solution\\":(.*),\\"walls\\"/);
-                answer = match ? JSON.parse(match[1]) : [];
-                console.log("[Game Bot]", answer);
-                solverTrailGamePuzzle(answer);
-                break;
-            case "patches":
-                answer = parseJsonValueForKey(targetElement.text, "solution") || [];
-                console.log("[Game Bot]", answer);
-                solverPatchesGamePuzzle(answer);
-                break;
-            case "wend":
-                answer = parseJsonValueForKey(targetElement.text, "solutionWords") || [];
-                console.log("[Game Bot]", answer);
-                solverWendGamePuzzle(answer);
-                break;
-            default:
-                break;
-        }
-        clearTimeout(pollingTimeoutId);
-        pollingTimeoutId = null;
-    } else {
-        pollingTimeoutId = setTimeout(trySolveGamePuzzle, 200);
-    }
-}
-
-const startPolling = () => {
-    if (pollingTimeoutId === null) {
-        trySolveGamePuzzle();
-    }
-}
-
-startPolling();
+})();
