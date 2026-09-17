@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const queue = require('../queue');
 const origin = 'https://www.linkedin.com';
-function boot({ state, completed = false, ready = true, fail = false, path = '/games/zip/', blockedStorage = false, resultHref = null, resultVisible = true, frames = [] } = {}) {
+function boot({ state, completed = false, ready = true, fail = false, path = '/games/zip/', blockedStorage = false, resultHref = null, resultVisible = true, frames = [], bodyText = '' } = {}) {
     const saved = { value: JSON.stringify(state || null) };
     let tick, now = 1000, solves = 0, reloads = 0;
     const navigations = [];
@@ -22,7 +22,7 @@ function boot({ state, completed = false, ready = true, fail = false, path = '/g
             solve: async () => { solves++; if (fail) throw new Error('test'); } } },
         location: { origin, pathname: path, href: origin + path, assign: url => navigations.push(url), reload: () => reloads++ },
         sessionStorage: { getItem: () => saved.value, setItem: (_, value) => { if (blockedStorage) throw new Error('blocked'); saved.value = value; }, removeItem: () => { saved.value = 'null'; } },
-        document: { body: { append() {} },
+        document: { body: { innerText: bodyText, append() {} },
             createElement: tag => element(tag),
             querySelector: () => completed ? {} : null,
             querySelectorAll: selector => selector === 'a[href]' ? [{ href: origin + '/games/zip/', getClientRects: () => [1] }, { href: origin + '/games/queens/', getClientRects: () => [1] }, ...(resultHref ? [{ href: resultHref, getClientRects: () => resultVisible ? [1] : [] }] : [])] : [] },
@@ -160,4 +160,99 @@ test('builds working controls without innerHTML under LinkedIn HTML restrictions
     assert.equal(app.elements['#start'].textContent, '一鍵完成所有遊戲');
     app.elements['#start'].click();
     assert.equal(JSON.parse(app.saved.value).active, true);
+});
+
+test('reCAPTCHA connection failure skips without invoking the solver', () => {
+    const app = boot({ state: running(), bodyText: 'Could not connect to the reCAPTCHA service.' });
+    app.tick();
+    assert.equal(app.solves, 0);
+    assert.deepEqual(app.navigations, [origin + '/games/queens/']);
+    assert.match(JSON.parse(app.saved.value).results[0].detail, /reCAPTCHA/);
+});
+test('confirmed completion takes priority over an unrelated reCAPTCHA error', () => {
+    const app = boot({ state: running(), completed: true, bodyText: 'Could not connect to the reCAPTCHA service.' });
+    assert.equal(JSON.parse(app.saved.value).results[0].status, 'completed');
+});
+test('unloaded game advances after 30 seconds while an active solver gets 90 seconds', () => {
+    const waiting = boot({ state: running(), ready: false });
+    waiting.setTime(31001); waiting.tick();
+    assert.equal(JSON.parse(waiting.saved.value).results[0].status, 'failed');
+    const solving = boot({ state: running() });
+    solving.setTime(31001); solving.tick();
+    assert.equal(solving.navigations.length, 0);
+    solving.setTime(91001); solving.tick();
+    assert.equal(solving.navigations.length, 1);
+});
+test('manual skip persists once and continues to the next game', () => {
+    const app = boot({ state: running() });
+    app.elements['#skip'].click(); app.elements['#skip'].click();
+    assert.deepEqual(app.navigations, [origin + '/games/queens/']);
+    assert.equal(JSON.parse(app.saved.value).results[0].status, 'failed');
+});
+test('retry after returning to lobby keeps completed results and queues only unfinished games', () => {
+    const first = boot({ state: running(), ready: false });
+    first.elements['#skip'].click();
+    const second = boot({ state: JSON.parse(first.saved.value), path: '/games/queens/', completed: true });
+    const lobby = boot({ state: JSON.parse(second.saved.value), path: '/games/' });
+    assert.equal(lobby.elements['#retry'].hidden, false);
+    lobby.elements['#retry'].click();
+    const saved = JSON.parse(lobby.saved.value);
+    assert.deepEqual(saved.queue.map(item => item.slug), ['zip']);
+    assert.deepEqual(saved.results, [{ slug: 'queens', status: 'completed' }]);
+    assert.deepEqual(lobby.navigations, [origin + '/games/zip/']);
+    const retried = boot({ state: saved, completed: true });
+    const done = boot({ state: JSON.parse(retried.saved.value), path: '/games/' });
+    assert.equal(done.elements['#retry'].hidden, true);
+    assert.equal(JSON.parse(done.saved.value).results.length, 2);
+});
+test('stopping preserves current and unvisited games for explicit retry', () => {
+    const app = boot({ state: running(), ready: false });
+    app.elements['#stop'].click();
+    const stopped = boot({ state: JSON.parse(app.saved.value) });
+    stopped.elements['#retry'].click();
+    assert.equal(JSON.parse(stopped.saved.value).queue.length, 2);
+});
+test('retry storage failure does not navigate', () => {
+    const state = running(); state.active = false;
+    const app = boot({ state, blockedStorage: true });
+    app.elements['#retry'].click();
+    assert.equal(app.navigations.length, 0);
+});
+
+test('failed first navigation skips to second game after 15 seconds without cancelling batch', () => {
+    const app = boot({ path: '/games/' });
+    app.elements['#start'].click();
+    assert.equal(app.elements['#start'].hidden, true);
+    assert.equal(app.elements['#stop'].hidden, false);
+    app.setTime(15999); app.tick();
+    assert.equal(app.navigations.length, 1);
+    app.setTime(16000); app.tick();
+    const saved = JSON.parse(app.saved.value);
+    assert.equal(saved.active, true);
+    assert.equal(saved.index, 1);
+    assert.match(saved.results[0].detail, /無法開啟/);
+    assert.deepEqual(app.navigations, [origin + '/games/zip/', origin + '/games/queens/']);
+    assert.equal(app.solves, 0);
+});
+test('all rejected navigations finish finitely in lobby with a retry list', () => {
+    const app = boot({ path: '/games/' });
+    app.elements['#start'].click();
+    app.setTime(16000); app.tick();
+    app.setTime(31000); app.tick();
+    app.setTime(50000); app.tick();
+    const saved = JSON.parse(app.saved.value);
+    assert.equal(saved.active, false);
+    assert.equal(saved.results.length, 2);
+    assert.equal(app.navigations.length, 2);
+    assert.equal(app.elements['#retry'].hidden, false);
+    app.elements['#retry'].click();
+    assert.equal(app.navigations.length, 3);
+});
+test('stop during stalled navigation prevents later automatic skips', () => {
+    const app = boot({ path: '/games/' });
+    app.elements['#start'].click();
+    app.elements['#stop'].click();
+    app.setTime(30000); app.tick();
+    assert.equal(app.navigations.length, 1);
+    assert.equal(JSON.parse(app.saved.value).active, false);
 });

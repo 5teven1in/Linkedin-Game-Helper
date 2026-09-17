@@ -15,6 +15,20 @@ const waitForMinimumElapsed = async (startedAt, minimumMs) => {
     }
 }
 
+// Use the game's displayed active time: wall-clock delays can include loading,
+// paused time, or time spent with the tab in the background.
+const waitForGameTimer = async (gameName, minimumSeconds = 3) => {
+    const deadline = performance.now() + 15000;
+    while (performance.now() < deadline) {
+        const timer = document.querySelector('.timer-text');
+        const match = timer?.textContent.trim().match(/^(\d+):(\d{2})$/);
+        if (document.visibilityState === 'visible' && match &&
+            Number(match[1]) * 60 + Number(match[2]) >= minimumSeconds) return;
+        await sleep(100);
+    }
+    throw new Error(`${gameName} 計時未達 ${minimumSeconds} 秒，已停止，請確認遊戲正在前景執行`);
+}
+
 const mouseDownUp = async (node) => {
     if (node) node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     await sleep(10);
@@ -191,6 +205,15 @@ const solverCrossClimbGamePuzzle = async (answer) => {
     });
 }
 
+const solveCrossClimbGamePuzzle = async (answer) => {
+    // The first fill can complete the board, so wait before dispatching any
+    // input. The second pass handles Crossclimb's later rearrangement phase.
+    await waitForGameTimer('Crossclimb');
+    await solverCrossClimbGamePuzzle(answer);
+    await sleep(2500);
+    await solverCrossClimbGamePuzzle(answer);
+}
+
 const solverLotkaGamePuzzle = async (answer) => {
     if (!Array.isArray(answer) || answer.length === 0) {
         console.warn('[Game Bot] Tango solution is empty.');
@@ -219,12 +242,19 @@ const solverLotkaGamePuzzle = async (answer) => {
 }
 
 const solverMiniSudokuGamePuzzle = async (answer) => {
-    for (const [idx, cell] of document.querySelectorAll(".sudoku-cell").entries()) {
-        if (cell.classList.contains("sudoku-cell-prefilled")) continue;
+    const cells = Array.from(document.querySelectorAll('.sudoku-cell'));
+    if (cells.length !== answer.length) throw new Error('Mini Sudoku 棋盤與答案長度不符');
+    const pending = cells.map((cell, idx) => ({ cell, idx })).filter(({ cell, idx }) =>
+        !cell.classList.contains('sudoku-cell-prefilled') && cell.textContent.trim() !== String(answer[idx]));
+    if (!pending.length) throw new Error('Mini Sudoku 棋盤已填滿，但尚未確認儲存成功');
+    for (const [step, { cell, idx }] of pending.entries()) {
         await sleep(delayBetweenEvents);
         await mouseDownUp(cell);
         await sleep(delayBetweenEvents);
-        document.querySelectorAll(".sudoku-input-button")[answer[idx] - 1].click();
+        if (step === pending.length - 1) await waitForGameTimer('Mini Sudoku');
+        const button = document.querySelectorAll('.sudoku-input-button')[answer[idx] - 1];
+        if (!cell.isConnected || !button || button.disabled) throw new Error('Mini Sudoku 輸入不可用');
+        button.click();
     }
 }
 
@@ -381,11 +411,7 @@ window.fetch = async function (...args) {
 
 const registry = {
     pinpoint: { key: 'blueprintGamePuzzle', field: 'solutions', selector: '.pinpoint__input', solve: a => solverBlueprintGamePuzzle(a[0]) },
-    crossclimb: { key: 'crossClimbGamePuzzle', field: 'rungs', selector: '.crossclimb__guess__inner input', solve: async a => {
-        await solverCrossClimbGamePuzzle(a);
-        await sleep(2500);
-        await solverCrossClimbGamePuzzle(a);
-    } },
+    crossclimb: { key: 'crossClimbGamePuzzle', field: 'rungs', selector: '.crossclimb__guess__inner input', solve: solveCrossClimbGamePuzzle },
     'mini-sudoku': { key: 'miniSudokuGamePuzzle', field: 'solution', selector: '.sudoku-cell', solve: solverMiniSudokuGamePuzzle },
     tango: { key: 'lotkaGamePuzzle', field: 'solution', selector: '[data-cell-idx], [data-cell-index], [role="gridcell"]', solve: solverLotkaGamePuzzle },
     queens: { key: 'queensGamePuzzle', field: 'solution', selector: '[data-cell-idx]', solve: solverQueensGamePuzzle },

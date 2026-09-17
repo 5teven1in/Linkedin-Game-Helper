@@ -11,9 +11,11 @@
         if (valid(saved, origin, games, Date.now())) state = saved;
         else sessionStorage.removeItem(KEY);
     } catch { storageAvailable = false; }
-    let panel, message, startButton, stopButton;
+    let panel, message, startButton, stopButton, skipButton, retryButton;
     let solving = false;
     let navigating = false;
+    let navigationStartedAt = 0;
+    let navigationSource = '';
     let enteredAt = Date.now();
     let clickedStart = false;
     let currentPath = location.pathname;
@@ -40,6 +42,26 @@
         [...document.querySelectorAll('a[href]')].some(link =>
             link.getClientRects().length > 0 && isResultLink(link.href, location.href));
     const listGames = () => discover([...document.querySelectorAll('a[href]')].map(a => a.href), origin, games);
+    const pendingGames = () => state?.queue.filter(item =>
+        !state.results.some(result => result.slug === item.slug && result.status === 'completed')) || [];
+    const navigate = url => {
+        navigating = true;
+        navigationStartedAt = Date.now();
+        navigationSource = location.pathname;
+        render();
+        try { location.assign(url); }
+        catch (error) { console.warn('[LGH] Navigation failed:', error); }
+        // A rejected/cancelled navigation may leave this document alive. The
+        // interval must keep running until a new document actually takes over.
+    };
+    const begin = (queue, results = []) => {
+        if (state?.active || navigating || !queue.length) return;
+        state = { active: true, queue, index: 0, results, startedAt: Date.now(),
+            home: isLobby(location.pathname) ? origin + location.pathname : origin + '/games/' };
+        if (!save()) { state.active = false; return; }
+        note = '';
+        navigate(queue[0].url);
+    };
     const finish = (status, detail) => {
         if (!state?.active || navigating) return;
         navigating = true;
@@ -47,7 +69,10 @@
         state.index++;
         state.active = state.index < state.queue.length;
         if (!save()) { state.active = false; return; }
-        location.assign(state.active ? state.queue[state.index].url : state.home);
+        if (!state.active && location.href === state.home) {
+            navigating = false;
+            render();
+        } else navigate(state.active ? state.queue[state.index].url : state.home);
     };
     const mount = () => {
         if (panel?.isConnected || !document.body) return;
@@ -76,23 +101,26 @@
         stopButton = document.createElement('button');
         stopButton.id = 'stop';
         stopButton.textContent = '停止';
-        section.append(title, message, startButton, stopButton);
+        skipButton = document.createElement('button');
+        skipButton.id = 'skip';
+        skipButton.textContent = '先跳過此遊戲';
+        retryButton = document.createElement('button');
+        retryButton.id = 'retry';
+        retryButton.textContent = '重試未完成';
+        section.append(title, message, startButton, retryButton, skipButton, stopButton);
         shadow.append(style, section);
         startButton.addEventListener('click', () => {
             if (state?.active) return;
             const queue = isLobby(location.pathname) ? listGames() : discover([location.href], origin, games);
             if (!queue.length) return;
-            state = { active: true, queue, index: 0, results: [], startedAt: Date.now(),
-                home: isLobby(location.pathname) ? origin + location.pathname : origin + '/games/' };
-            if (!save()) { state.active = false; return; }
-            // Navigation may take several ticks. Keep the lobby from cancelling the
-            // newly persisted batch while the first game is still loading.
-            navigating = true;
-            // Reload even the current game to start from a fresh puzzle and network payload.
-            location.assign(queue[0].url);
+            begin(queue);
         });
+        retryButton.addEventListener('click', () => begin(pendingGames(),
+            state?.results.filter(result => result.status === 'completed') || []));
+        skipButton.addEventListener('click', () => finish('failed', '已跳過，待重試'));
         stopButton.addEventListener('click', () => {
             state.active = false;
+            navigating = false;
             if (!save()) sessionStorage.removeItem(KEY);
             // A reload also cancels a solver already dispatching input events.
             location.reload();
@@ -106,19 +134,40 @@
         mount();
         if (!panel) return;
         panel.hidden = false;
-        startButton.hidden = Boolean(state?.active);
+        const pendingCount = pendingGames().length;
+        startButton.hidden = Boolean(state?.active) || pendingCount > 0;
         startButton.textContent = lobby ? '一鍵完成所有遊戲' : '完成此遊戲';
         startButton.disabled = !storageAvailable || (lobby && !listGames().length);
         stopButton.hidden = !state?.active;
+        skipButton.hidden = !state?.active;
+        skipButton.disabled = navigating;
+        retryButton.hidden = Boolean(state?.active) || !pendingCount;
+        retryButton.disabled = !storageAvailable;
+        retryButton.textContent = `重試未完成（${pendingCount}）`;
         const results = state?.results.map(r => `${r.slug}：${r.status === 'completed' ? '已完成' : r.detail}`).join('\n') || '';
         const text = state?.active
-            ? `進度 ${state.index + 1}/${state.queue.length}：${state.queue[state.index].slug}\n${solving ? '正在解題…' : (window.LGH.waitingReason?.(state.queue[state.index].slug) || '等待遊戲載入…')}`
+            ? `進度 ${state.index + 1}/${state.queue.length}：${state.queue[state.index].slug}\n${navigating ? '正在開啟遊戲…（15 秒未成功將跳過）' : solving ? '正在解題…' : (window.LGH.waitingReason?.(state.queue[state.index].slug) || '等待遊戲載入…')}`
             : note || (lobby ? `已找到 ${listGames().length} 個支援遊戲。按一下依序完成。` : '按一下自動完成此遊戲。');
         const nextText = text + (results ? '\n\n' + results : '');
         if (message.textContent !== nextText) message.textContent = nextText;
     };
     const tick = () => {
-        if (navigating) return;
+        if (navigating) {
+            if (location.pathname !== navigationSource) {
+                navigating = false;
+                solving = false;
+            } else {
+                if (Date.now() - navigationStartedAt >= 15000) {
+                    navigating = false;
+                    if (state?.active) finish('failed', '無法開啟遊戲，已跳過待重試');
+                    else {
+                        note = '批次已結束，但無法返回大廳。可重試未完成遊戲。';
+                        render();
+                    }
+                }
+                return;
+            }
+        }
         if (currentPath !== location.pathname) {
             currentPath = location.pathname;
             enteredAt = Date.now();
@@ -134,7 +183,12 @@
             return;
         }
         if (complete()) { finish('completed'); return; }
-        if (Date.now() - enteredAt > 90000) { finish('failed', '逾時，未確認完成'); return; }
+        if (/Could not connect to the reCAPTCHA service/i.test(document.body?.innerText || '')) {
+            finish('failed', 'reCAPTCHA 連線失敗，已跳過待重試'); return;
+        }
+        if (Date.now() - enteredAt > (solving || onResultsPage() ? 90000 : 30000)) {
+            finish('failed', '逾時，未確認完成；待重試'); return;
+        }
         if (onResultsPage()) return;
         if (solving) return;
         if (!clickedStart) {
@@ -145,8 +199,11 @@
         const slug = state.queue[state.index].slug;
         if (window.LGH.ready(slug)) {
             solving = true;
+            const attemptState = state;
+            const attemptIndex = state.index;
             window.LGH.solve(slug).catch(error => {
                 console.warn('[LGH] Solver failed:', error);
+                if (state !== attemptState || state.index !== attemptIndex) return;
                 finish('failed', '解題失敗，未確認完成');
             });
             // Keep solving=true until a confirmed result or timeout; never apply a solution twice.
